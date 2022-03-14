@@ -26,16 +26,16 @@ def parse_args():
     parser.add_argument('--path',
                         default='data')
     parser.add_argument('--output_dir',
-                        default='output_cnn_hsi', type=str)
+                        default='output_twocnn', type=str)
     parser.add_argument('--log_dir',
-                        default='log_cnn_hsi', type=str)
+                        default='log_twocnn', type=str)
 
     parser.add_argument('--model',
-                        default='CNN_HSI')
+                        default='TwoCNN')
     parser.add_argument('--model_name',
-                        default='CNN_HSI')
+                        default='TwoCnn')
     parser.add_argument('--resume',
-                        default=False)
+                        default=True)
     parser.add_argument('--num_classes',
                         default=19, type=int)
     parser.add_argument('--ignore_label',
@@ -74,7 +74,7 @@ def main():
     cudnn.benchmark = True
     cudnn.deterministic = False
     cudnn.enabled = True
-    gpus = (2, 3)
+    gpus = (0, 1)
     distributed = len(gpus) > 1
     device = torch.device(f'cuda:{args.local_rank}')
 
@@ -128,7 +128,7 @@ def main():
     test_size = (1889, 1422)
     test_dataset = eval('datasets.hsicity2')(
         root='/data/huangyx/data/HSICityV2/',
-        list_path='data/list/hsicity2/val.lst',
+        list_path='data/list/hsicity2/val_temp.lst',
         num_samples=None,
         num_classes=args.num_classes,
         multi_scale=False,
@@ -167,7 +167,7 @@ def main():
                                 momentum=0.9,
                                 weight_decay=0.0005,
                                 nesterov=False)
-
+ 
     best_mIoU = 0
     last_epoch = 0
     if args.resume:

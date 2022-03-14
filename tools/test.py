@@ -27,16 +27,16 @@ def parse_args():
                         # default='../data/')
 
     parser.add_argument('--output_dir',
-                        default='output_cnn_hsi', type=str)
+                        default='output_twocnn', type=str)
     parser.add_argument('--log_dir',
-                        default='log_cnn_hsi', type=str)
+                        default='log_twocnn', type=str)
     parser.add_argument('--model_file',
-                        default='../output_cnn_hsi/hsicity/hsicity2/last_state.pth', type=str)
+                        default='', type=str)
 
     parser.add_argument('--model',
-                        default='CNN_HSI')
+                        default='TwoCNN')
     parser.add_argument('--model_name',
-                        default='CNN_HSI')
+                        default='TwoCnn')
     parser.add_argument('--resume',
                         default=False)
     parser.add_argument('--num_classes',
@@ -44,10 +44,12 @@ def parse_args():
     parser.add_argument('--ignore_label',
                         default=255, type=int)
     parser.add_argument('--test_row_size',
-                        default=50, type=int)
+                        default=8, type=int)
 
     parser.add_argument('--exp_name',
-                        default='hsicity')
+                        default='hsicity2')
+
+    parser.add_argument("--local_rank", type=int)
 
     args = parser.parse_args()
 
@@ -60,11 +62,26 @@ def main():
         args.output_dir, 'hsicity', args.model, args.log_dir, args.exp_name, 'test'
     )
 
+    # cudnn related setting
+    cudnn.benchmark = True
+    cudnn.deterministic = False
+    cudnn.enabled = True
+
+    gpus = [0, 1, 2, 3]
+    distributed = len(gpus) > 1
+    device = torch.device(f'cuda:{args.local_rank}')
+
     # build model
     # model = eval('models.' + args.model + '.' +
     #              args.model_name)(num_classes=args.num_classes)
     model = eval('models.' + args.model + '.' +
                    args.model_name)(128, 19)
+    
+    if distributed:
+        torch.cuda.set_device(args.local_rank)
+        torch.distributed.init_process_group(
+            backend="nccl", init_method="env://",
+        )
 
     if args.model_file:
         model_state_file = args.model_file
@@ -77,19 +94,23 @@ def main():
     model_dict = model.state_dict()
     pretrained_dict = {k[7:]: v for k, v in pretrained_dict.items()
                        if k[7:] in model_dict.keys()}
-    for k, _ in pretrained_dict.items():
-        logger.info(
-            '=> loading {} from pretrained model'.format(k))
+    # for k, _ in pretrained_dict.items():
+        # logger.info(
+        #     '=> loading {} from pretrained model'.format(k))
     model_dict.update(pretrained_dict)
     model.load_state_dict(model_dict)
-    model.cuda()
+    
+    # model = nn.DataParallel(model, device_ids=gpus).cuda()    
+    model = model.to(device)
+    model = nn.parallel.DistributedDataParallel(
+        model, device_ids=[args.local_rank], output_device=args.local_rank)
 
     # prepare data
     test_size = (1889, 1422)
     test_dataset = eval('datasets.hsicity2')(
         root='/data/huangyx/data/HSICityV2/',
         # root=r'F:\database\HSIcityscapes',
-        list_path='../data/list/hsicity2/testval.lst',
+        list_path='data/list/hsicity2/testval.lst',
         num_samples=None,
         num_classes=args.num_classes,
         multi_scale=False,
@@ -100,11 +121,17 @@ def main():
         center_crop_test=False,
         downsample_rate=1)
 
+    if distributed:
+        test_sampler = DistributedSampler(test_dataset)
+    else:
+        test_sampler = None
+    
     testloader = torch.utils.data.DataLoader(
         test_dataset,
         batch_size=1,
         shuffle=False,
-        num_workers=0)
+        num_workers=0,
+        sampler=test_sampler)
 
     start = timeit.default_timer()
     mean_IoU, IoU_array, pixel_acc, mean_acc = testval(args.num_classes,
@@ -114,7 +141,7 @@ def main():
                                                        testloader,
                                                        model,
                                                        sv_pred=True,
-                                                       sv_dir='../result'
+                                                       sv_dir='result'
                                                        )
 
     msg = 'MeanIU: {: 4.4f}, Pixel_Acc: {: 4.4f}, \

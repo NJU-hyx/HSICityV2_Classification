@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.distributed as dist
 from torch.nn import functional as F
 
-from utils.utils import get_confusion_matrix, get_confusion_matrix_1d, covertBatch2TrainCubes, createTestCube
+from utils.utils import TwoCNN_dataprocess, get_confusion_matrix, get_confusion_matrix_1d, covertBatch2TrainCubes, createTestCube
 
 import datasets
 
@@ -50,18 +50,20 @@ def train(epoch, num_epoch, print_freq, epoch_iters, base_lr,
     for i_iter, batch in enumerate(trainloader):
         images, labels, _, _ = batch
         inputcubes, labelcubes = covertBatch2TrainCubes(
-            images, labels, windowSize=5, cubeSize=10000)
+            images, labels, windowSize=21, cubeSize=10000)
 
         hsiCubedatas = datasets.hsicube(inputcubes, labelcubes)
         hsiDataloader = torch.utils.data.DataLoader(
             hsiCubedatas,
-            batch_size=256,
+            batch_size=512,
             shuffle=True,
         )
         for index, (batchImage, batchLabel) in enumerate(hsiDataloader):
             batchImage = batchImage.to(device)
             batchLabel = batchLabel.long().to(device)
-            outputs = model(batchImage)
+            spectra, neighbor = TwoCNN_dataprocess(batchImage)
+            # outputs = model(batchImage)
+            outputs = model(spectra, neighbor)
             loss = criterion(outputs, batchLabel)
 
             model.zero_grad()
@@ -116,19 +118,20 @@ def validate(num_class, ignore_label, testloader, criterion, model, writer_dict,
         for _, batch in enumerate(testloader):
             image, label, _, _ = batch
             inputcubes, labelcubes = covertBatch2TrainCubes(
-                image, label, windowSize=5, cubeSize=10000)
+                image, label, windowSize=21, cubeSize=10000)
 
             hsiCubedatas = datasets.hsicube(inputcubes, labelcubes)
             hsiDataloader = torch.utils.data.DataLoader(hsiCubedatas,
-                                                        batch_size=256,
+                                                        batch_size=512,
                                                         shuffle=True
                                                         )
             for index, (batchImage, batchLabel) in enumerate(hsiDataloader):
                 batchImage = batchImage.to(device)
                 batchLabel = batchLabel.long().to(device)
                 size = batchLabel.size()
-
-                pred = model(batchImage)
+                spectra, neighbor = TwoCNN_dataprocess(batchImage)
+                pred = model(spectra, neighbor)
+                # pred = model(batchImage)
                 loss = criterion(pred, batchLabel)
 
                 losses += loss.item()
@@ -170,7 +173,7 @@ def testval(num_class, ignore_label, rowSize, test_dataset, testloader, model, s
                 if size[1] - j < rowSize:
                     row_size = size[1] - j
                 imageCubes, labelCubes = createTestCube(
-                    image[0], label[0], windowSize=5, r=j, size=row_size)
+                    image[0], label[0], windowSize=21, r=j, size=row_size)
                 hsiDataset = datasets.hsicube(imageCubes, labelCubes)
                 hsiDataloader = torch.utils.data.DataLoader(hsiDataset,
                                                             batch_size=size[2] *
@@ -179,8 +182,10 @@ def testval(num_class, ignore_label, rowSize, test_dataset, testloader, model, s
 
                 for _, (inputCube, _) in enumerate(hsiDataloader):
                     inputCube = inputCube.cuda()
+                    spectra, neighbor = TwoCNN_dataprocess(inputCube)
                     with torch.no_grad():
-                        output = model.forward(inputCube)
+                        # output = model.forward(inputCube)
+                        output = model(spectra, neighbor)
                     pred[j:j + row_size, :,
                          :] = output.reshape((row_size, size[2], num_class))
 
@@ -194,11 +199,11 @@ def testval(num_class, ignore_label, rowSize, test_dataset, testloader, model, s
                 ignore_label)
 
             if sv_pred:
-                sv_path = os.path.join(sv_dir, 'test_val_results')
+                sv_path = os.path.join(sv_dir, 'twocnn')
                 if not os.path.exists(sv_path):
                     os.mkdir(sv_path)
 
-                # test_dataset.save_pred(pred, sv_path, name)
+                test_dataset.save_pred(pred, sv_path, name)
                 # test_dataset.save_pred_gray(pred, sv_path, name)
 
             # if index % 100 == 0:

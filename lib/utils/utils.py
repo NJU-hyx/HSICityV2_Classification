@@ -113,10 +113,10 @@ def createImageCubes(X, y, windowSize, cubeSize):
     patchesLabels = np.zeros(cubeSize, dtype=np.int32)
     patchIndex = 0
     for _ in range(margin, zeroPaddedX.shape[0] - margin):
-        r = np.random.randint(margin, zeroPaddedX.shape[0] - margin)  # �ڴ����ޣ����ѡȡ��?
+        r = np.random.randint(margin, zeroPaddedX.shape[0] - margin)  # �ڴ����ޣ����ѡȡ��?
         for _ in range(256):
 
-            c = np.random.randint(margin, zeroPaddedX.shape[1] - margin)  # �ڴ����ޣ����ѡȡ��?
+            c = np.random.randint(margin, zeroPaddedX.shape[1] - margin)  # �ڴ����ޣ����ѡȡ��?
 
             patch = zeroPaddedX[r - margin:r + margin + 1, c - margin:c + margin + 1]
 
@@ -211,3 +211,10 @@ def weight_log():
     weights = 9 * weights / np.sum(weights)
     # [0.98715601, 1.09478434, 0.93646407, 1.05219084, 1.05683465, 0.93822461, 0.99140051, 0.93846433, 1.00448063]
     return weights
+
+import torch
+def TwoCNN_dataprocess(data):
+    _, _, h, w = data.shape
+    spectra = torch.unsqueeze(data[:, :, h//2 + 1, w//2 + 1], 1)    
+    neighbor = torch.mean(data, axis=1, keepdim=True)
+    return spectra, neighbor
