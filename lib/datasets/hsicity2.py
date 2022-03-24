@@ -183,9 +183,9 @@ class hsicity(BaseDataset):
 
     def save_pred(self, preds, sv_path, name):
         palette = self.get_palette_hsicity(256)
-        preds = preds.cpu().numpy().copy()
+        preds = preds.cpu().numpy().copy().astype(np.uint8)
         # np.save(os.path.join(sv_path, name[0] + '.npy'), preds)
-        preds = np.asarray(np.argmax(preds, axis=2), dtype=np.uint8) 
+        # preds = np.asarray(np.argmax(preds, axis=2), dtype=np.uint8) 
         # preds = confidence_label_softmax(preds, threshold=0.7)
 
         pred = self.convert_label(preds, inverse=False)

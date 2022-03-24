@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.distributed as dist
 from torch.nn import functional as F
 
-from utils.utils import TwoCNN_dataprocess, get_confusion_matrix, get_confusion_matrix_1d, covertBatch2TrainCubes, createTestCube
+from utils.utils import *
 
 import datasets
 
@@ -50,7 +50,7 @@ def train(epoch, num_epoch, print_freq, epoch_iters, base_lr,
     for i_iter, batch in enumerate(trainloader):
         images, labels, _, _ = batch
         inputcubes, labelcubes = covertBatch2TrainCubes(
-            images, labels, windowSize=21, cubeSize=10000)
+            images, labels, windowSize=25, cubeSize=3000)
 
         hsiCubedatas = datasets.hsicube(inputcubes, labelcubes)
         hsiDataloader = torch.utils.data.DataLoader(
@@ -61,9 +61,9 @@ def train(epoch, num_epoch, print_freq, epoch_iters, base_lr,
         for index, (batchImage, batchLabel) in enumerate(hsiDataloader):
             batchImage = batchImage.to(device)
             batchLabel = batchLabel.long().to(device)
-            spectra, neighbor = TwoCNN_dataprocess(batchImage)
-            # outputs = model(batchImage)
-            outputs = model(spectra, neighbor)
+            # spectra, neighbor = TwoCNN_dataprocess(batchImage)
+            outputs = model(batchImage)
+            # outputs = model(spectra, neighbor)
             loss = criterion(outputs, batchLabel)
 
             model.zero_grad()
@@ -118,7 +118,7 @@ def validate(num_class, ignore_label, testloader, criterion, model, writer_dict,
         for _, batch in enumerate(testloader):
             image, label, _, _ = batch
             inputcubes, labelcubes = covertBatch2TrainCubes(
-                image, label, windowSize=21, cubeSize=10000)
+                image, label, windowSize=25, cubeSize=10000)
 
             hsiCubedatas = datasets.hsicube(inputcubes, labelcubes)
             hsiDataloader = torch.utils.data.DataLoader(hsiCubedatas,
@@ -168,12 +168,12 @@ def testval(num_class, ignore_label, rowSize, test_dataset, testloader, model, s
             size = label.size()
             pred = torch.rand(size[1], size[2], num_class)
 
-            for j in range(0, size[1], rowSize):  # 多�?�测�?
+            for j in range(0, size[1], rowSize):  # 多�?�测�??
                 row_size = rowSize
                 if size[1] - j < rowSize:
                     row_size = size[1] - j
                 imageCubes, labelCubes = createTestCube(
-                    image[0], label[0], windowSize=21, r=j, size=row_size)
+                    image[0], label[0], windowSize=25, r=j, size=row_size)
                 hsiDataset = datasets.hsicube(imageCubes, labelCubes)
                 hsiDataloader = torch.utils.data.DataLoader(hsiDataset,
                                                             batch_size=size[2] *
@@ -182,10 +182,10 @@ def testval(num_class, ignore_label, rowSize, test_dataset, testloader, model, s
 
                 for _, (inputCube, _) in enumerate(hsiDataloader):
                     inputCube = inputCube.cuda()
-                    spectra, neighbor = TwoCNN_dataprocess(inputCube)
+                    # spectra, neighbor = TwoCNN_dataprocess(inputCube)
                     with torch.no_grad():
-                        # output = model.forward(inputCube)
-                        output = model(spectra, neighbor)
+                        output = model.forward(inputCube)
+                        # output = model(spectra, neighbor)
                     pred[j:j + row_size, :,
                          :] = output.reshape((row_size, size[2], num_class))
 
@@ -199,7 +199,7 @@ def testval(num_class, ignore_label, rowSize, test_dataset, testloader, model, s
                 ignore_label)
 
             if sv_pred:
-                sv_path = os.path.join(sv_dir, 'twocnn')
+                sv_path = os.path.join(sv_dir, 'cnn_hsi')
                 if not os.path.exists(sv_path):
                     os.mkdir(sv_path)
 
@@ -224,3 +224,46 @@ def testval(num_class, ignore_label, rowSize, test_dataset, testloader, model, s
     mean_IoU = IoU_array.mean()
 
     return mean_IoU, IoU_array, pixel_acc, mean_acc
+
+def testvalOnlyBackground(num_class, ignore_label, test_dataset, testloader, model, batch_size=0, sv_dir='', sv_pred=False):
+    model.eval()
+    confusion_matrix = np.zeros(
+        (num_class + 1, num_class + 1))
+    with torch.no_grad():
+        for index, batch in enumerate(tqdm(testloader)):
+            image, label, _, name = batch
+            size = label.size()
+            pred = label[0].cuda()
+
+            h, w = 0, 0
+            while h != size[2] - 1 or w != size[1] - 1:
+                imageCubes, labelCubes, ret = createOnlyBackgroundTestCube(
+                    image[0], label[0], windowSize=17, h=h, w=w, size=batch_size)
+                imageCubes = imageCubes.permute(0, 3, 1, 2)
+                with torch.no_grad():
+                        output = model.forward(imageCubes)
+                
+                k = 0
+                while k != labelCubes.shape[0]:
+                    if label[0, h, w] == 255:
+                        pred[h, w] = torch.argmax(output[k], dim=0)
+                        k += 1
+                    h = h + (w + 1) // size[2]
+                    w = (w + 1) % size[2]
+            
+                if ret:
+                    break
+                # print('\r' + f'{h} {w}', end='', flush=True)
+
+            if sv_pred:
+                sv_path = os.path.join(sv_dir, 'refined_label')
+                if not os.path.exists(sv_path):
+                    os.mkdir(sv_path)
+                test_dataset.save_pred(pred, sv_path, name)
+                # test_dataset.save_pred_gray(pred, sv_path, name)
+
+            # if index % 100 == 0:
+            logging.info('processing: %d images' % index)
+
+    return 0
+

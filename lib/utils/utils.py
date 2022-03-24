@@ -45,8 +45,8 @@ def get_confusion_matrix(label, pred, size, num_class, ignore=-1):
     Calcute the confusion matrix by given label and pred
     """
     output = pred.cpu().numpy()
-    # seg_pred = np.asarray(np.argmax(output, axis=2), dtype=np.uint8) + 1
-    seg_pred = confidence_label_softmax(output, threshold=0.5)
+    seg_pred = np.asarray(np.argmax(output, axis=2), dtype=np.uint8)
+    # seg_pred = confidence_label_softmax(output, threshold=0.5)
     seg_gt = np.asarray(
         label.cpu().numpy(), dtype=np.int).squeeze()
 
@@ -113,10 +113,10 @@ def createImageCubes(X, y, windowSize, cubeSize):
     patchesLabels = np.zeros(cubeSize, dtype=np.int32)
     patchIndex = 0
     for _ in range(margin, zeroPaddedX.shape[0] - margin):
-        r = np.random.randint(margin, zeroPaddedX.shape[0] - margin)  # �ڴ����ޣ����ѡȡ��?
+        r = np.random.randint(margin, zeroPaddedX.shape[0] - margin)  # �ڴ����ޣ����ѡȡ��??
         for _ in range(256):
 
-            c = np.random.randint(margin, zeroPaddedX.shape[1] - margin)  # �ڴ����ޣ����ѡȡ��?
+            c = np.random.randint(margin, zeroPaddedX.shape[1] - margin)  # �ڴ����ޣ����ѡȡ��??
 
             patch = zeroPaddedX[r - margin:r + margin + 1, c - margin:c + margin + 1]
 
@@ -153,6 +153,29 @@ def createTestCube(x, y, windowSize, r, size):
             patchesLabels[patchIndex] = y[row - margin, c - margin]
             patchIndex += 1
     return patchesData, patchesLabels
+
+
+def createOnlyBackgroundTestCube(x, y, windowSize, h, w, size):
+    hight, width = y.shape
+    margin = int((windowSize - 1) / 2)
+    zeroPaddedX = torch.tensor(padWithZeros(x, margin=margin)).cuda()
+    # split patches
+    patchesData = torch.zeros(size, windowSize, windowSize, x.shape[2], dtype=torch.float32).cuda()
+    patchesLabels = torch.zeros(size, dtype=torch.int32).cuda()
+    patchIndex = 0
+
+    r, c = h, w
+    while r != hight or c != 0:
+        if y[r, c] == 255:
+            patch = zeroPaddedX[r :r + 2*margin + 1, c :c + 2*margin + 1]
+            patchesData[patchIndex, :, :, :] = patch
+            patchesLabels[patchIndex] = y[r, c]
+            patchIndex += 1
+        if patchIndex == size:
+            return patchesData, patchesLabels, 0
+        r = r + (c + 1) // width
+        c = (c + 1) % width
+    return patchesData[:patchIndex], patchesLabels[:patchIndex], 1
 
 
 def covertBatch2TrainCubes(x, y, **kwargs):

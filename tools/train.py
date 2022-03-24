@@ -26,14 +26,14 @@ def parse_args():
     parser.add_argument('--path',
                         default='data')
     parser.add_argument('--output_dir',
-                        default='output_twocnn', type=str)
+                        default='output_HybridSN', type=str)
     parser.add_argument('--log_dir',
-                        default='log_twocnn', type=str)
+                        default='log_HybridSN', type=str)
 
     parser.add_argument('--model',
-                        default='TwoCNN')
+                        default='HybridSN')
     parser.add_argument('--model_name',
-                        default='TwoCnn')
+                        default='HybridSN')
     parser.add_argument('--resume',
                         default=True)
     parser.add_argument('--num_classes',
@@ -74,7 +74,7 @@ def main():
     cudnn.benchmark = True
     cudnn.deterministic = False
     cudnn.enabled = True
-    gpus = (0, 1)
+    gpus = (0,)
     distributed = len(gpus) > 1
     device = torch.device(f'cuda:{args.local_rank}')
 
@@ -99,7 +99,7 @@ def main():
     crop_size = (1889, 1422)
 
     train_dataset = eval('datasets.hsicity2')(
-        root='/data/huangyx/data/HSICityV2/',
+        root='/data/huangyx/HSICityV2/',
         list_path='data/list/hsicity2/train.lst',
         num_samples=None,
         num_classes=args.num_classes,
@@ -127,7 +127,7 @@ def main():
 
     test_size = (1889, 1422)
     test_dataset = eval('datasets.hsicity2')(
-        root='/data/huangyx/data/HSICityV2/',
+        root='/data/huangyx/HSICityV2/',
         list_path='data/list/hsicity2/val_temp.lst',
         num_samples=None,
         num_classes=args.num_classes,
@@ -154,10 +154,10 @@ def main():
     criterion = nn.CrossEntropyLoss(weight=train_dataset.class_weights,
                                     ignore_index=args.ignore_label)
 
-    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    # model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model = model.to(device)
-    model = nn.parallel.DistributedDataParallel(
-        model, device_ids=[args.local_rank], output_device=args.local_rank)
+    # model = nn.parallel.DistributedDataParallel(
+    #     model, device_ids=[args.local_rank], output_device=args.local_rank)
 
     optimizer = torch.optim.SGD([{'params':
                                 filter(lambda p: p.requires_grad,

@@ -15,7 +15,7 @@ import _init_paths
 import models
 import datasets
 from core.criterion import CrossEntropy
-from core.function import testval
+from core.function import testval, testvalOnlyBackground
 from utils.utils import create_logger
 
 
@@ -23,20 +23,22 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train segmentation network')
 
     parser.add_argument('--path',
-                        default='/home/huangyx/code/HSIseg/data/')
-                        # default='../data/')
+                        # default='/home/huangyx/code/HSIseg/data/')
+                        default='data/')
 
     parser.add_argument('--output_dir',
-                        default='output_twocnn', type=str)
+                        default='output', type=str)
     parser.add_argument('--log_dir',
-                        default='log_twocnn', type=str)
+                        default='log', type=str)
     parser.add_argument('--model_file',
-                        default='', type=str)
+                        default='./output/hsicity/hsicity2/best17.pth', 
+                        # default='', 
+                        type=str)
 
     parser.add_argument('--model',
-                        default='TwoCNN')
+                        default='resnet')
     parser.add_argument('--model_name',
-                        default='TwoCnn')
+                        default='resnet50')
     parser.add_argument('--resume',
                         default=False)
     parser.add_argument('--num_classes',
@@ -44,7 +46,7 @@ def parse_args():
     parser.add_argument('--ignore_label',
                         default=255, type=int)
     parser.add_argument('--test_row_size',
-                        default=8, type=int)
+                        default=200, type=int)
 
     parser.add_argument('--exp_name',
                         default='hsicity2')
@@ -72,10 +74,10 @@ def main():
     device = torch.device(f'cuda:{args.local_rank}')
 
     # build model
-    # model = eval('models.' + args.model + '.' +
-    #              args.model_name)(num_classes=args.num_classes)
     model = eval('models.' + args.model + '.' +
-                   args.model_name)(128, 19)
+                 args.model_name)(num_classes=args.num_classes)
+    # model = eval('models.' + args.model + '.' +
+    #                args.model_name)(128, 19)
     
     if distributed:
         torch.cuda.set_device(args.local_rank)
@@ -108,9 +110,9 @@ def main():
     # prepare data
     test_size = (1889, 1422)
     test_dataset = eval('datasets.hsicity2')(
-        root='/data/huangyx/data/HSICityV2/',
+        root='/data/huangyx/HSICityV2/',
         # root=r'F:\database\HSIcityscapes',
-        list_path='data/list/hsicity2/testval.lst',
+        list_path='data/list/hsicity2/train.lst',
         num_samples=None,
         num_classes=args.num_classes,
         multi_scale=False,
@@ -134,15 +136,24 @@ def main():
         sampler=test_sampler)
 
     start = timeit.default_timer()
-    mean_IoU, IoU_array, pixel_acc, mean_acc = testval(args.num_classes,
-                                                       args.ignore_label,
-                                                       args.test_row_size,
-                                                       test_dataset,
-                                                       testloader,
-                                                       model,
-                                                       sv_pred=True,
-                                                       sv_dir='result'
-                                                       )
+    res = testvalOnlyBackground(args.num_classes,
+                                args.ignore_label,
+                                test_dataset,
+                                testloader,
+                                model,
+                                sv_pred=True,
+                                sv_dir='result',
+                                batch_size=2048
+                                )
+    # mean_IoU, IoU_array, pixel_acc, mean_acc = testval(args.num_classes,
+    #                                                    args.ignore_label,
+    #                                                    args.test_row_size,
+    #                                                    test_dataset,
+    #                                                    testloader,
+    #                                                    model,
+    #                                                    sv_pred=True,
+    #                                                    sv_dir='result'
+    #                                                    )
 
     msg = 'MeanIU: {: 4.4f}, Pixel_Acc: {: 4.4f}, \
         Mean_Acc: {: 4.4f}, Class IoU: '.format(mean_IoU,
